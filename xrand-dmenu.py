@@ -12,6 +12,7 @@ import shlex
 import sys
 import re
 from os.path import expanduser
+from collections import OrderedDict
 from subprocess import Popen, PIPE
 try:
     import configparser as configparser
@@ -23,13 +24,13 @@ ENV['LC_ALL'] = 'C'
 ENC = locale.getpreferredencoding()
 
 def dmenu_cmd(num_lines, prompt="Displays"):
-    """Parse config.ini if it exists and add options to the dmenu command
+    """
+    Parse config.ini if it exists and add options to the dmenu command
 
     Args: args - num_lines: number of lines to display
                  prompt: prompt to show
     Returns: command invocation (as a list of strings) for
                 dmenu -l <num_lines> -p <prompt> -i ...
-
     """
     dmenu_command = "dmenu"
     conf = configparser.ConfigParser()
@@ -75,21 +76,23 @@ class display(object):
         self.active = None
         self.resolution = None
         self.resolutions = []
-        self.position = None
-        __ordered_dict__
-        self.positions_cmd = {"Same": "--same-as",
-                              "Left of": "--left-of",
-                              "Right of": "--right-of",
-                              "Below": "--below",
-                              "Above": "--above"}
+        self.positions_cmd = OrderedDict()
+        self.positions_cmd["Same as"] = "--same-as"
+        self.positions_cmd["Left of"] = "--left-of"
+        self.positions_cmd["Right of"] = "--right-of"
+        self.positions_cmd["Below"] = "--below"
+        self.positions_cmd["Above"] = "--above"
         self.positions = self.positions_cmd.keys()
         self.init_values()
 
     def init_values(self):
+        """
+        Get display properties using xrandr
+        """
         # get data
         conns = ["xrandr", "--query"]
         res = Popen(conns, stdout=PIPE).communicate()[0].decode(ENC)
-        displs = []
+
         regex = r"\n{} ([^\s]+) (\d+x\d+)?(\+\d+\+\d+)?.*".format(self.name)
         match = re.search(regex, res)
         state, resolution, position = match.groups()
@@ -106,31 +109,61 @@ class display(object):
         self.resolutions.append(resolution)
 
     def dmenu_repr(self):
-        text = self.name
+        """
+        String representing the display for dmenu.
+        """
+        text = ""
         if self.active:
-            text += "*\t{} {}".format(self.resolution, self.position)
+            text += "Desactivate "
+        else:
+            text += "Activate "
+        text += self.name + " "
+        if self.resolution is not None:
+            text += "({})".format(self.resolution)
         return text
 
     def check_repr(self, repr):
-        return repr[0:len(self.name)] == self.name
+        """
+        Check if the given represention match the display.
+        """
+        # TODO : not bulletproof
+        return self.name in repr
 
     def change_resolution(self, new_resolution):
+        """
+        Change the display resolution.
+        """
         if new_resolution not in self.resolutions:
             raise Exception()
         args = ['xrandr', '--output', self.name, '--mode', new_resolution]
         res = Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
 
-    def activate(self, position=None, active_displ=None):
+    def activate(self, active_displs=None):
         """
+        Active the display.
         """
         if self.active:
             raise Exception()
-        #
-        args = ['xrandr', '--output', self.name, '--auto']
-        if position is self.positions and active_displ is not None:
-            args += [self.positions_cmd[position], '{}'.format(active_displ.name)]
-        res = Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
+        # Check where to put this new display
+        position = self.select_position(active_displs=active_displs)
+        # run the command
+        args = ['xrandr', '--output', self.name] + position + ['--auto']
+        Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
         self.active = True
+
+    def select_position(self, active_displs):
+        """
+        Use dmenu to select where to put the display.
+        """
+        inputs = []
+        commands = {}
+        for displ in active_displs:
+            for pos in self.positions:
+                inputs += ["{} {}".format(pos, displ.name)]
+                commands[inputs[-1]] = [self.positions_cmd[pos],
+                                        displ.name]
+        sel = get_selection("Where ", inputs)
+        return commands[sel]
 
     def deactivate(self):
         """
@@ -139,7 +172,7 @@ class display(object):
             raise Exception("{} already active".format(self.name))
         #
         args = ['xrandr', '--output', self.name, '--off']
-        res = Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
+        Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
         self.active = False
 
     def get_options(self):
@@ -149,7 +182,7 @@ class display(object):
         if self.active:
             opts += ["Deactivate"]
         else:
-            opts += self.positions
+            opts += ["Activate"]
         return opts
 
     def execute_option(self, opt):
@@ -182,22 +215,22 @@ def get_selection(prompt, inputs):
     return sel.rstrip()
 
 def run():
-    # Get display
+    # select a display
     displs = get_displays()
     connected_displs = [displ for displ in displs if displ.connected]
     active_displs = [displ for displ in displs if displ.active]
     connected_displs_repr = [d.dmenu_repr() for d in connected_displs]
     sel = get_selection("Displays : ", connected_displs_repr)
     displ = [d for d in displs if d.check_repr(sel)][0]
-    # get action on deisplay
+    # What to do with the display (active/ desactivate)
     opts = displ.get_options()
     if len(opts) == 1:
         opt = opts[0]
     else:
         opt = get_selection("{} : ".format(displ.name), opts)
-    # execute action
-    if opt in displ.positions:
-        displ.activate(position=opt, active_displ=active_displs[0])
+    # Execute action
+    if opt == "Activate":
+        displ.activate(active_displs=active_displs)
     elif opt == "Deactivate":
         if len(active_displs) == 1:
             print("You don't want to deactivate the last display...")
