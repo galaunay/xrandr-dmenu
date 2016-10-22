@@ -67,8 +67,10 @@ def dmenu_cmd(num_lines, prompt="Displays"):
         res[1:1] = lines.split()
     return res
 
-class display(object):
+
+class Display(object):
     """
+    Represent a display.
     """
     def __init__(self, name):
         self.name = name
@@ -89,13 +91,27 @@ class display(object):
         """
         Get display properties using xrandr
         """
-        # get data
+        # get xrandr output
         conns = ["xrandr", "--query"]
-        res = Popen(conns, stdout=PIPE).communicate()[0].decode(ENC)
-
-        regex = r"\n{} ([^\s]+) (\d+x\d+)?(\+\d+\+\d+)?.*".format(self.name)
-        match = re.search(regex, res)
-        state, resolution, position = match.groups()
+        lines = Popen(conns, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
+        # Get data from it
+        regex_display = r"^{} ([^\s]+) (\d+x\d+)?(\+\d+\+\d+)?.*".format(self.name)
+        regex_resolution = r"^(\d+x\d+).*$"
+        resolutions = []
+        for i in range(len(lines)):
+            line = lines[i].rstrip().lstrip()
+            if line[0:len(self.name)] == self.name:
+                match = re.search(regex_display, line)
+                state, resolution, _ = match.groups()
+                for j in range(i + 1, len(lines)):
+                    line = lines[j].rstrip().lstrip()
+                    if len(line) == 0:
+                        break
+                    if line[0] not in ["{}".format(i) for i in range(10)]:
+                        break
+                    match = re.search(regex_resolution, line)
+                    resolutions.append(match.groups()[0])
+                break
         # store
         if state == "connected":
             self.connected = True
@@ -106,37 +122,29 @@ class display(object):
         else:
             self.active = True
         self.resolution = resolution
-        self.resolutions.append(resolution)
+        self.resolutions = resolutions
 
-    def dmenu_repr(self):
+    def get_possible_actions(self):
         """
-        String representing the display for dmenu.
+        dict representing the possible actions on this display.
         """
-        text = ""
+        options = {}
         if self.active:
-            text += "Desactivate "
+            options["Desactivate {}".format(self.name)] = self.deactivate
+            options["Change resolution of {} ({})"
+                    .format(self.name, self.resolution)] = self.change_resolution
         else:
-            text += "Activate "
-        text += self.name + " "
-        if self.resolution is not None:
-            text += "({})".format(self.resolution)
-        return text
+            options["Activate {}".format(self.name)] = self.activate
+        return options
 
-    def check_repr(self, repr):
-        """
-        Check if the given represention match the display.
-        """
-        # TODO : not bulletproof
-        return self.name in repr
-
-    def change_resolution(self, new_resolution):
+    def change_resolution(self, active_displs):
         """
         Change the display resolution.
         """
-        if new_resolution not in self.resolutions:
-            raise Exception()
+        new_resolution = use_dmenu("new resolution (currently {}) :".format(self.resolution),
+                                   self.resolutions)
         args = ['xrandr', '--output', self.name, '--mode', new_resolution]
-        res = Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
+        Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
 
     def activate(self, active_displs=None):
         """
@@ -162,11 +170,12 @@ class display(object):
                 inputs += ["{} {}".format(pos, displ.name)]
                 commands[inputs[-1]] = [self.positions_cmd[pos],
                                         displ.name]
-        sel = get_selection("Where ", inputs)
+        sel = use_dmenu("Where ", inputs)
         return commands[sel]
 
-    def deactivate(self):
+    def deactivate(self, active_displs):
         """
+        Deactive the display.
         """
         if not self.active:
             raise Exception("{} already active".format(self.name))
@@ -175,24 +184,10 @@ class display(object):
         Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
         self.active = False
 
-    def get_options(self):
-        opts = []
-        if not self.connected:
-            raise Exception()
-        if self.active:
-            opts += ["Deactivate"]
-        else:
-            opts += ["Activate"]
-        return opts
-
-    def execute_option(self, opt):
-        if opt == "Deactivate":
-            self.deactivate()
-        elif opt in self.positions:
-            self.activate(opt)
 
 def get_displays():
     """
+    Return the list of displays.
     """
     # get dispays names
     conns = ["xrandr", "--query"]
@@ -200,10 +195,10 @@ def get_displays():
     regex = r"\n([^\s]*) (connected|disconnected).*"
     names = [res[0] for res in re.findall(regex, res)]
     # create display object
-    displs = [display(name) for name in names]
+    displs = [Display(name) for name in names]
     return displs
 
-def get_selection(prompt, inputs):
+def use_dmenu(prompt, inputs):
     """Combine the arg lists and send to dmenu for selection.
     """
     inputs_bytes = "\n".join(inputs).encode(ENC)
@@ -215,28 +210,20 @@ def get_selection(prompt, inputs):
     return sel.rstrip()
 
 def run():
-    # select a display
+    """
+    Run the whole thing.
+    """
+    # Gather possible actions for each displays
     displs = get_displays()
     connected_displs = [displ for displ in displs if displ.connected]
     active_displs = [displ for displ in displs if displ.active]
-    connected_displs_repr = [d.dmenu_repr() for d in connected_displs]
-    sel = get_selection("Displays : ", connected_displs_repr)
-    displ = [d for d in displs if d.check_repr(sel)][0]
-    # What to do with the display (active/ desactivate)
-    opts = displ.get_options()
-    if len(opts) == 1:
-        opt = opts[0]
-    else:
-        opt = get_selection("{} : ".format(displ.name), opts)
-    # Execute action
-    if opt == "Activate":
-        displ.activate(active_displs=active_displs)
-    elif opt == "Deactivate":
-        if len(active_displs) == 1:
-            print("You don't want to deactivate the last display...")
-            return 0
-        displ.deactivate()
-
+    actions = {}
+    for displ in connected_displs:
+        actions.update(displ.get_possible_actions())
+    # Select an action
+    sel = use_dmenu("Displays : ", actions.keys())
+    # perform the action
+    actions[sel](active_displs=active_displs)
 
 if __name__ == '__main__':
     run()
