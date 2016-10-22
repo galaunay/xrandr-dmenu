@@ -152,10 +152,12 @@ class Display(object):
         """
         if self.active:
             raise Exception()
+        args = ['xrandr', '--output', self.name, '--auto']
         # Check where to put this new display
-        position = self.select_position(active_displs=active_displs)
+        if len(active_displs) != 0:
+            position = self.select_position(active_displs=active_displs)
+            args += position
         # run the command
-        args = ['xrandr', '--output', self.name] + position + ['--auto']
         Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
         self.active = True
 
@@ -179,7 +181,9 @@ class Display(object):
         """
         if not self.active:
             raise Exception("{} already active".format(self.name))
-        #
+        if len(active_displs) == 1:
+            raise Exception("You don't want to desactivate the last display")
+        # run
         args = ['xrandr', '--output', self.name, '--off']
         Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
         self.active = False
@@ -201,10 +205,13 @@ def get_displays():
 def use_dmenu(prompt, inputs):
     """Combine the arg lists and send to dmenu for selection.
     """
+    if len(inputs) == 0:
+        raise Exception("Empty input list")
     inputs_bytes = "\n".join(inputs).encode(ENC)
     sel = Popen(dmenu_cmd(len(inputs), prompt),
                 stdin=PIPE,
                 stdout=PIPE).communicate(input=inputs_bytes)[0].decode(ENC)
+    sel = inputs[int(sel)]
     if not sel.rstrip():
         sys.exit()
     return sel.rstrip()
@@ -222,6 +229,7 @@ def run():
         actions.update(displ.get_possible_actions())
     # Select an action
     sel = use_dmenu("Displays : ", actions.keys())
+    print(sel)
     # perform the action
     actions[sel](active_displs=active_displs)
 
