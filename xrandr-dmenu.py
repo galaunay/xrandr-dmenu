@@ -95,14 +95,14 @@ class Display(object):
         conns = ["xrandr", "--query"]
         lines = Popen(conns, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
         # Get data from it
-        regex_display = r"^{} ([^\s]+) (\d+x\d+)?(\+\d+\+\d+)?.*".format(self.name)
+        regex_display = r"^{} ([^\s]+) (primary )?(\d+x\d+)?(\+\d+\+\d+)?.*".format(self.name)
         regex_resolution = r"^(\d+x\d+).*$"
         resolutions = []
         for i in range(len(lines)):
             line = lines[i].rstrip().lstrip()
             if line[0:len(self.name)] == self.name:
                 match = re.search(regex_display, line)
-                state, resolution, _ = match.groups()
+                state, _, resolution, _ = match.groups()
                 for j in range(i + 1, len(lines)):
                     line = lines[j].rstrip().lstrip()
                     if len(line) == 0:
@@ -128,7 +128,7 @@ class Display(object):
         """
         dict representing the possible actions on this display.
         """
-        options = {}
+        options = OrderedDict()
         if self.active:
             options["Desactivate {}".format(self.name)] = self.deactivate
             options["Change resolution of {} ({})"
@@ -211,7 +211,11 @@ def use_dmenu(prompt, inputs):
     sel = Popen(dmenu_cmd(len(inputs), prompt),
                 stdin=PIPE,
                 stdout=PIPE).communicate(input=inputs_bytes)[0].decode(ENC)
-    sel = inputs[int(sel)]
+    try:
+        # some version of rofi return the entry index
+        sel = inputs[int(sel)]
+    except ValueError:
+        pass
     if not sel.rstrip():
         sys.exit()
     return sel.rstrip()
@@ -224,7 +228,7 @@ def run():
     displs = get_displays()
     connected_displs = [displ for displ in displs if displ.connected]
     active_displs = [displ for displ in displs if displ.active]
-    actions = {}
+    actions = OrderedDict()
     for displ in connected_displs:
         actions.update(displ.get_possible_actions())
     # Select an action
