@@ -150,7 +150,7 @@ class Display(object):
         """
         Use dmenu to ask for a newresolution
         """
-        new_resolution = use_dmenu("new resolution (currently {}) :"
+        new_resolution = use_dmenu("New resolution (currently {}):"
                                    .format(self.resolution),
                                    self.resolutions)
         return new_resolution
@@ -177,7 +177,7 @@ class Display(object):
                 inputs += ["{} {}".format(pos, displ.name)]
                 commands[inputs[-1]] = [self.positions_cmd[pos],
                                         displ.name]
-        sel = use_dmenu("Where ", inputs)
+        sel = use_dmenu("New position:", inputs)
         return commands[sel]
 
     def activate(self, active_displs=None):
@@ -253,7 +253,7 @@ def run():
     for displ in connected_displs:
         actions.update(displ.get_possible_actions())
     # Select an action
-    sel = use_dmenu("Displays : ", actions.keys())
+    sel = use_dmenu("Displays:", actions.keys())
     print(sel)
     # perform the action
     actions[sel](active_displs=active_displs)
