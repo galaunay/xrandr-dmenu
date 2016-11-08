@@ -133,6 +133,7 @@ class Display(object):
             options["Desactivate {}".format(self.name)] = self.deactivate
             options["Change resolution of {} ({})"
                     .format(self.name, self.resolution)] = self.change_resolution
+            options["Change position of {}".format(self.name)] = self.change_position
         else:
             options["Activate {}".format(self.name)] = self.activate
         return options
@@ -141,10 +142,43 @@ class Display(object):
         """
         Change the display resolution.
         """
-        new_resolution = use_dmenu("new resolution (currently {}) :".format(self.resolution),
-                                   self.resolutions)
+        new_resolution = self.select_resolution(active_displs)
         args = ['xrandr', '--output', self.name, '--mode', new_resolution]
         Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
+
+    def select_resolution(self, active_displs):
+        """
+        Use dmenu to ask for a newresolution
+        """
+        new_resolution = use_dmenu("new resolution (currently {}) :"
+                                   .format(self.resolution),
+                                   self.resolutions)
+        return new_resolution
+
+    def change_position(self, active_displs):
+        """
+        Change the display position.
+        """
+        pos = self.select_position(active_displs)
+        args = ['xrandr', '--output', self.name] + pos
+        print(args)
+        Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
+
+    def select_position(self, active_displs):
+        """
+        Use dmenu to select where to put the display.
+        """
+        inputs = []
+        commands = {}
+        for displ in active_displs:
+            if displ.name == self.name:
+                continue
+            for pos in self.positions:
+                inputs += ["{} {}".format(pos, displ.name)]
+                commands[inputs[-1]] = [self.positions_cmd[pos],
+                                        displ.name]
+        sel = use_dmenu("Where ", inputs)
+        return commands[sel]
 
     def activate(self, active_displs=None):
         """
@@ -161,19 +195,6 @@ class Display(object):
         Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
         self.active = True
 
-    def select_position(self, active_displs):
-        """
-        Use dmenu to select where to put the display.
-        """
-        inputs = []
-        commands = {}
-        for displ in active_displs:
-            for pos in self.positions:
-                inputs += ["{} {}".format(pos, displ.name)]
-                commands[inputs[-1]] = [self.positions_cmd[pos],
-                                        displ.name]
-        sel = use_dmenu("Where ", inputs)
-        return commands[sel]
 
     def deactivate(self, active_displs):
         """
