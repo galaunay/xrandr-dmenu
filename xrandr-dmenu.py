@@ -129,11 +129,13 @@ class Display(object):
         dict representing the possible actions on this display.
         """
         options = OrderedDict()
-        if self.active:
+        if self.active and self.connected:
             options["Desactivate {}".format(self.name)] = self.deactivate
             options["Change resolution of {} ({})"
                     .format(self.name, self.resolution)] = self.change_resolution
             options["Change position of {}".format(self.name)] = self.change_position
+        elif self.active and not self.connected:
+            options["Desactivate {}".format(self.name)] = self.deactivate
         else:
             options["Activate {}".format(self.name)] = self.activate
         return options
@@ -223,6 +225,7 @@ def get_displays():
     displs = [Display(name) for name in names]
     return displs
 
+
 def use_dmenu(prompt, inputs):
     """Combine the arg lists and send to dmenu for selection.
     """
@@ -241,6 +244,7 @@ def use_dmenu(prompt, inputs):
         sys.exit()
     return sel.rstrip()
 
+
 def run():
     """
     Run the whole thing.
@@ -249,8 +253,10 @@ def run():
     displs = get_displays()
     connected_displs = [displ for displ in displs if displ.connected]
     active_displs = [displ for displ in displs if displ.active]
+    actionable_displs = list(set(connected_displs + active_displs))
+    # Deactivate all active but not connect displays
     actions = OrderedDict()
-    for displ in connected_displs:
+    for displ in actionable_displs:
         actions.update(displ.get_possible_actions())
     # Select an action
     sel = use_dmenu("Displays:", actions.keys())
