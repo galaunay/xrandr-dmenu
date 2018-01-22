@@ -23,6 +23,7 @@ ENV = os.environ.copy()
 ENV['LC_ALL'] = 'C'
 ENC = locale.getpreferredencoding()
 
+
 def dmenu_cmd(num_lines, prompt="Displays"):
     """
     Parse config.ini if it exists and add options to the dmenu command
@@ -93,9 +94,11 @@ class Display(object):
         """
         # get xrandr output
         conns = ["xrandr", "--query"]
-        lines = Popen(conns, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
+        lines = Popen(conns, stdout=PIPE).communicate()[0].decode(ENC)\
+                                                          .split('\n')
         # Get data from it
-        regex_display = r"^{} ([^\s]+) (primary )?(\d+x\d+)?(\+\d+\+\d+)?.*".format(self.name)
+        regex_display = r"^{} ([^\s]+) (primary )?(\d+x\d+)?(\+\d+\+\d+)?.*"\
+                        .format(self.name)
         regex_resolution = r"^(\d+x\d+).*$"
         resolutions = []
         for i in range(len(lines)):
@@ -132,8 +135,10 @@ class Display(object):
         if self.active and self.connected:
             options["Desactivate {}".format(self.name)] = self.deactivate
             options["Change resolution of {} ({})"
-                    .format(self.name, self.resolution)] = self.change_resolution
-            options["Change position of {}".format(self.name)] = self.change_position
+                    .format(self.name, self.resolution)] \
+                = self.change_resolution
+            options["Change position of {}".format(self.name)] \
+                = self.change_position
         elif self.active and not self.connected:
             options["Desactivate {}".format(self.name)] = self.deactivate
         else:
@@ -163,7 +168,6 @@ class Display(object):
         """
         pos = self.select_position(active_displs)
         args = ['xrandr', '--output', self.name] + pos
-        print(args)
         Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
 
     def select_position(self, active_displs):
@@ -196,7 +200,6 @@ class Display(object):
         # run the command
         Popen(args, stdout=PIPE).communicate()[0].decode(ENC).split('\n')
         self.active = True
-
 
     def deactivate(self, active_displs):
         """
@@ -260,9 +263,9 @@ def run():
         actions.update(displ.get_possible_actions())
     # Select an action
     sel = use_dmenu("Displays:", actions.keys())
-    print(sel)
     # perform the action
     actions[sel](active_displs=active_displs)
+
 
 if __name__ == '__main__':
     run()
